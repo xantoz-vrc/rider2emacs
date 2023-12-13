@@ -3,10 +3,10 @@
 use anyhow::anyhow;
 use anyhow::ensure;
 use anyhow::Result;
-use std::borrow::Cow;
 use std::env;
 use std::process;
 use std::process::Command;
+use std::process::Stdio;
 
 struct FileTarget {
     line: Option<u32>,
@@ -116,24 +116,21 @@ fn try_main() -> Result<()> {
                 None => {}
             },
         }
-        args.push(file_target.filename);
+
+        // Convert path using wslpath
+        let output = Command::new("wsl").arg("-e").arg("wslpath").arg(file_target.filename)
+            .stdout(Stdio::piped())
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        let path = stdout.trim().to_string();
+        args.push(path);
     }
 
-    // Spawn process.
-    let status = if cfg!(target_os = "windows") {
-        Command::new("emacsclientw").args(&args).status()
-    } else {
-        Command::new("sh")
-            .arg("-c")
-            .arg(format!(
-                "emacsclient {}",
-                args.iter()
-                    .map(|x| shell_escape::unix::escape(Cow::Borrowed(x)))
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            ))
-            .status()
-    }?;
+    let status =
+        Command::new("wsl")
+            .arg("-e").arg("emacsclient").args(&args).status()?;
+
 
     if !status.success() {
         match status.code() {
